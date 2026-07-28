@@ -1,0 +1,152 @@
+name: boleto-payment-platform
+
+networks:
+  boleto-net:
+    name: boleto-net
+
+volumes:
+  shared-config:
+  localstack-data:
+  pgdata:
+
+services:
+  localstack:
+    image: localstack/localstack:3.8.1
+    networks: [boleto-net]
+    ports:
+      - "4566:4566"
+    environment:
+      DEBUG: "0"
+      PERSISTENCE: "0"
+      AWS_DEFAULT_REGION: us-east-1
+      LAMBDA_DOCKER_NETWORK: boleto-net
+      LAMBDA_KEEPALIVE_MS: "0"
+      DOCKER_HOST: unix:///var/run/docker.sock
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "localstack-data:/var/lib/localstack"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 20s
+
+  postgres:
+    image: postgres:16-alpine
+    networks: [boleto-net]
+    environment:
+      POSTGRES_DB: reconciliation
+      POSTGRES_USER: reconciliation
+      POSTGRES_PASSWORD: reconciliation
+    volumes:
+      - "pgdata:/var/lib/postgresql/data"
+      - "./reconciliation-db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U reconciliation -d reconciliation"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.25.2-p0
+    networks: [boleto-net]
+    environment:
+      DATABASE_URL: postgres://reconciliation:reconciliation@postgres:5432/reconciliation
+      LISTEN_ADDR: "0.0.0.0"
+      LISTEN_PORT: "6432"
+      AUTH_TYPE: plain
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "200"
+      ADMIN_USERS: reconciliation
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432 -U reconciliation"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  bootstrap:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.bootstrap
+    networks: [boleto-net]
+    environment:
+      AWS_ENDPOINT_URL: http://localstack:4566
+      AWS_REGION: us-east-1
+      AWS_ACCOUNT_ID: "000000000000"
+      SHARED_CONFIG_PATH: /shared/endpoints.json
+    volumes:
+      - ".:/workspace:ro"
+      - "shared-config:/shared"
+    depends_on:
+      localstack:
+        condition: service_healthy
+
+  bank-simulator:
+    build: ./services/bank_simulator
+    networks: [boleto-net]
+    ports:
+      - "8091:8080"
+    environment:
+      AWS_ENDPOINT_URL: http://localstack:4566
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      WEBHOOK_SECRET_NAME: bank/webhook/hmac-secret
+      SHARED_CONFIG_PATH: /shared/endpoints.json
+    volumes:
+      - "shared-config:/shared:ro"
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  nginx:
+    build: ./nginx
+    networks: [boleto-net]
+    ports:
+      - "8090:8080"
+    volumes:
+      - "shared-config:/shared:ro"
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  e2e:
+    build: ./tests/e2e
+    networks: [boleto-net]
+    profiles: ["test"]
+    environment:
+      AWS_ENDPOINT_URL: http://localstack:4566
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      EDGE_BASE_URL: http://nginx:8080
+      BANK_SIMULATOR_URL: http://bank-simulator:8080
+      SHARED_CONFIG_PATH: /shared/endpoints.json
+      PGHOST: pgbouncer
+      PGPORT: "6432"
+      PGDATABASE: reconciliation
+      PGUSER: reconciliation
+      PGPASSWORD: reconciliation
+    volumes:
+      - "shared-config:/shared:ro"
+    depends_on:
+      nginx:
+        condition: service_healthy
+      bank-simulator:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_healthy

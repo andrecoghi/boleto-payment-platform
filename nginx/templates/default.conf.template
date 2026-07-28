@@ -1,0 +1,39 @@
+limit_req_zone $binary_remote_addr zone=waf_substitute:10m rate=20r/s;
+proxy_cache_path /var/cache/nginx levels=1:2 keys_zone=edge_cache:10m max_size=100m inactive=60m use_temp_path=off;
+
+# Single entry point for clients -- local substitute for CloudFront (edge
+# domain/caching) + API Gateway's own throttling, with WAF represented by a
+# basic rate-limit zone. GET-only proxy_cache_methods (the nginx default)
+# mirrors the article's "cache the GET routes, never the mutating POSTs"
+# rule for free, since only GET/HEAD are ever cacheable here.
+server {
+    listen 8080;
+
+    limit_req zone=waf_substitute burst=40 nodelay;
+
+    proxy_cache edge_cache;
+    # Short TTL on purpose: GET /boletos/{id} is a live payment-status check
+    # (PENDING -> ISSUED -> PAID), not a mostly-static resource. The article
+    # calls out status checks as cacheable, but caching them for long enough
+    # to show a client a stale "not paid yet" after they *did* pay would be
+    # a bad tradeoff -- 1s caps the staleness window while still absorbing
+    # a repeated-poll burst from a single client.
+    proxy_cache_valid 200 1s;
+    proxy_cache_key "$request_method:$request_uri";
+    add_header X-Edge-Cache-Status $upstream_cache_status always;
+
+    location /boletos {
+        proxy_pass http://localstack:4566/restapis/${API_ID}/local/_user_request_/boletos;
+        proxy_set_header Host $host;
+    }
+
+    location /webhooks/payment {
+        proxy_pass http://localstack:4566/restapis/${API_ID}/local/_user_request_/webhooks/payment;
+        proxy_set_header Host $host;
+    }
+
+    location /healthz {
+        return 200 '{"status":"ok"}';
+        add_header Content-Type application/json always;
+    }
+}

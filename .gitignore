@@ -1,0 +1,23 @@
+# Not for publishing to GitHub
+article/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# Env / secrets
+.env
+.env.*
+
+# LocalStack / Docker
+.localstack/
+volume/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store

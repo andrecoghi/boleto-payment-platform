@@ -1,0 +1,71 @@
+{
+  "Comment": "Boleto issuance: generate PDF -> register with bank/CIP -> finalize. Standard workflow so the full execution history is retained for audit.",
+  "StartAt": "GeneratePdf",
+  "States": {
+    "GeneratePdf": {
+      "Type": "Task",
+      "Resource": "${GenerateBoletoArn}",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "IntervalSeconds": 1,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "MarkFailed"
+        }
+      ],
+      "Next": "RegisterWithBank"
+    },
+    "RegisterWithBank": {
+      "Type": "Task",
+      "Resource": "${RegisterBankArn}",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "MarkFailed"
+        }
+      ],
+      "Next": "FinalizeIssuance"
+    },
+    "FinalizeIssuance": {
+      "Type": "Task",
+      "Resource": "${FinalizeIssuanceArn}",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "IntervalSeconds": 1,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "MarkFailed"
+        }
+      ],
+      "End": true
+    },
+    "MarkFailed": {
+      "Type": "Task",
+      "Resource": "${MarkFailedArn}",
+      "End": true
+    }
+  }
+}
