@@ -3,8 +3,8 @@
 [![E2E idempotency suite](https://github.com/andrecoghi/boleto-payment-platform/actions/workflows/e2e.yml/badge.svg)](https://github.com/andrecoghi/boleto-payment-platform/actions/workflows/e2e.yml)
 
 A fully local, runnable implementation of the architecture described in
-[`boleto-payment-architecture-aws.md`](boleto-payment-architecture-aws.md), built with
-Docker Compose, [LocalStack](https://localstack.cloud) and a couple of open-source
+[Building a Scalable, Cost-Aware Boleto Payment Architecture on AWS](https://www.linkedin.com/feed/update/urn:li:ugcPost:7486503636248883200/),
+built with Docker Compose, [LocalStack](https://localstack.cloud) and a couple of open-source
 substitutes for the AWS-managed pieces LocalStack's community edition doesn't emulate
 (Aurora, RDS Proxy, CloudFront). Same architectural roles as the AWS design, same
 idempotency guarantees, running entirely on your machine.
