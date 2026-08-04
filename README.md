@@ -1,5 +1,7 @@
 # Boleto Payment Platform — Local Reference Implementation
 
+[![E2E idempotency suite](https://github.com/andrecoghi/boleto-payment-platform/actions/workflows/e2e.yml/badge.svg)](https://github.com/andrecoghi/boleto-payment-platform/actions/workflows/e2e.yml)
+
 A fully local, runnable implementation of the architecture described in
 [`boleto-payment-architecture-aws.md`](boleto-payment-architecture-aws.md), built with
 Docker Compose, [LocalStack](https://localstack.cloud) and a couple of open-source
@@ -189,6 +191,12 @@ covers exactly the claims the architecture doc makes:
   `400` with an `errors` list, not an unhandled-exception `502`.
 
 Run them again anytime with `docker compose run --rm e2e` once the stack is up.
+
+This exact suite also runs in CI — see [`.github/workflows/e2e.yml`](.github/workflows/e2e.yml) —
+on every push/PR that touches `services/`, `infra/`, `nginx/`, `reconciliation-db/`,
+`tests/`, `docker-compose.yml` or `Makefile`. It's the same `make test` command, just
+invoked by a GitHub-hosted runner instead of a human; no AWS credentials or LocalStack
+auth token are needed, for the same version-pin reason described below.
 
 ## Cleaning up
 
